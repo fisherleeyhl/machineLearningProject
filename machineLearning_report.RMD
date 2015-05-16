@@ -1,0 +1,133 @@
+---
+title: "Project Report for Practical Machine Learning Course"
+output: html_document
+---
+
+Author: Huili Yu
+
+# Introduction
+This report is for the final project of the Coursera Practical Machine Learning class. The objective of this project is to use data from accelerometers on belt, forearm, arm, and dumbell of 6 participants to predict the manner in which they did the exercise. 
+
+The training data for this projects can found at:
+
+<https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv>. 
+
+The test data are available at:
+
+<https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv>.
+
+# Method and results
+
+In order to produce results, we need the following libraries for this project. 
+```{r eval = TRUE, warning=FALSE}
+library(ggplot2)
+library(lattice)
+library(caret)
+library(rpart)
+library(randomForest)
+```
+The following rand seed is used in the project:
+```{r eval = TRUE}
+set.seed(123)
+```
+## Reading data
+The training data and testing data are loaded to memory by
+```{r eval=TRUE}
+training <- read.csv("pml-training.csv", na.strings=c("NA","","#DIV/0!"))
+testing <- read.csv("pml-testing.csv", na.strings=c("NA","","#DIV/0!"))
+dim(training)
+dim(testing)
+```
+Here special characters "NA", "#DIV/0!", and "" in the data are considered as NA. 
+
+## Cleaning data
+Data are cleaned before being used to build model. Three steps are used to clean the data. 
+
+Step 1: Removing predictors with near zero variance using **NearZeroVariance ** function in R as follow:
+```{r eval = TRUE}
+nzv <- nearZeroVar(training)
+training <- training[,-nzv]
+dim(training)
+```
+Step 2: Removing the first column representing ID, which will not be used by machine learning algorithms. 
+```{r eval = TRUE}
+training <- training[c(-1)]
+```
+
+Step 3: Removing the predictors with more than 60% NAs. 
+```{r eval = TRUE}
+training <- training[,colSums(is.na(training))<(nrow(training)*0.6)]
+dim(training)
+```
+Similar to the case for training data, the preditors for testing data are also removed to make the testing data have same preditors.
+```{r eval = TRUE}
+testing <- testing[colnames(training[,-58])]
+dim(testing)
+```
+## Model building and checking with cross validation
+Decision tree model and random forest model are compared over cross validation to check which one yields better performance. The training data is first partitioned into 5 equal sized subsamples, and then the 5-fold cross validation is used to check which model is better. The training data is partitioned as:
+```{r eval = TRUE}
+folds <- createFolds(y = training$classe, k = 5)
+sapply(folds,length)
+```
+
+The 5-fold cross valiation is given by the following **for** loop.
+```{r eval = TRUE, results='hide'}
+model1_accuracy <- vector()
+model2_accuracy <- vector()
+for (i in 1:5)
+{ 
+  trainingData <- training[-folds[[i]],]
+	testingData <- training[folds[[i]],]
+
+	modFit1 <- rpart(classe ~ ., data=trainingData, method = "class")
+	prediction1 <- predict(modFit1,testingData,type = "class")
+	result1 <- confusionMatrix(prediction1,testingData$classe)
+	model1_accuracy = c(model1_accuracy,result1$overall[1])
+
+  modFit2 <- randomForest(classe~., data = trainingData)
+	prediction2 <- predict(modFit2, testingData, type = "class")
+	result2 <- confusionMatrix(prediction2,testingData$classe)
+	model2_accuracy = c(model2_accuracy,result2$overall[1])
+}
+```
+During each validation, a single subsample is retained as validation data for testing the model, and the remaining 4 subsamples are used as training data. The decision tree model and the random forest model are trained by the training data using **rpart** function and **randomForest** function in R, respectively. Then the two models make predictions based on the testing data using **predict** function in R and the corresponding prediction accuracy is recorded, which is shown as below. 
+
+```{r eval = TRUE}
+model1_accuracy
+model2_accuracy
+```
+Based on the results, we can see that the random forest model produces better prediction performance. Therefore, we use it to model the whole set of training data as follow.
+```{r eval = TRUE}
+modFit <- randomForest(classe~., data = training)
+```
+## Prediction
+To make prediction on the test set using the trained random forest model, we need to make it consistent that the factor levels of traning data is the same as the ones of test data, which can be achieved by following code.
+
+```{r eval = TRUE}
+testing <- rbind(training[2, -58] , testing)
+testing <- testing[-1,]
+```
+
+The prediction on the test set is given by:
+```{r eval = TRUE}
+prediction <- predict(modFit, testing, type = "class")
+```
+
+The result is listed below.
+```{r eval = TRUE}
+prediction
+```
+
+The following function is used to generated files with predictions for assigment submission.
+```{r eval = FALSE}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+pml_write_files(predictionsB2)
+```
+
